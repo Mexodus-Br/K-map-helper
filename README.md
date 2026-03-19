@@ -99,3 +99,7 @@ Z(a,b,c,d,e)=(d+e)(a+b+c)(B+C+D+E)(a+B+c+D+e)
 
 - `main.cpp`：主程序源码
 - `logic_kmap.exe`：编译后的 Windows 可执行文件
+
+## 提交记录
+
+- 2026-03-19：在 README 中补充“提交记录”条目（本次提交）。
