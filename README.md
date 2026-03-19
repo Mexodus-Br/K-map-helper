@@ -122,7 +122,6 @@ Z(a,b,c,d,e)=(d+e)(a+b+c)(B+C+D+E)(a+B+c+D+e)
 ## 文件说明
 
 - `main.cpp`：主程序源码
-- `logic_kmap.exe`：编译后的 Windows 可执行文件
 - `build_wasm.sh`：WebAssembly 构建脚本
 - `web/index.html`：网页前端入口
 - `web/kmap.js` / `web/kmap.wasm`：WASM 构建输出
