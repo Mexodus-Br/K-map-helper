@@ -17,6 +17,10 @@
 #include <windows.h>
 #endif
 
+#ifdef __EMSCRIPTEN__
+#include <emscripten/bind.h>
+#endif
+
 using namespace std;
 
 namespace {
@@ -919,7 +923,88 @@ void processExpression(const string& rawInput) {
     }
 }
 
+#ifdef __EMSCRIPTEN__
+
+struct WebResult {
+    string error;
+    string originalInput;
+    string kmapText;
+    string sop;
+    string pos;
+};
+
+WebResult processForWeb(const string& rawInput) {
+    WebResult result;
+
+    HeaderParseResult header = parseHeader(rawInput);
+    if (!header.error.empty()) {
+        result.error = header.error;
+        return result;
+    }
+
+    BDDManager manager(static_cast<int>(header.variables.size()));
+    ExpressionParser parser(header.expression, header.variables, manager);
+    int functionRoot = parser.parse();
+    if (!parser.getError().empty()) {
+        result.error = parser.getError();
+        return result;
+    }
+
+    result.originalInput = header.normalizedInput;
+
+    int notFunctionRoot = manager.negate(functionRoot);
+
+    ostringstream kmapStream;
+    printKMap(kmapStream, manager, functionRoot, header.variables);
+    result.kmapText = kmapStream.str();
+
+    if (functionRoot == 0) {
+        result.sop = "0";
+    } else if (functionRoot == 1) {
+        result.sop = "1";
+    } else {
+        vector<Cube> simplifiedSOP;
+        if (buildAndSimplifyCover(manager, functionRoot, notFunctionRoot, simplifiedSOP)) {
+            result.sop = coverToSOP(simplifiedSOP, header.variables);
+        } else {
+            result.sop = u8"路径数过多，未能在限制内展开。";
+        }
+    }
+
+    if (functionRoot == 0) {
+        result.pos = "0";
+    } else if (functionRoot == 1) {
+        result.pos = "1";
+    } else {
+        vector<Cube> simplifiedPOSCover;
+        if (buildAndSimplifyCover(manager, notFunctionRoot, functionRoot, simplifiedPOSCover)) {
+            result.pos = coverToPOS(simplifiedPOSCover, header.variables);
+        } else {
+            result.pos = u8"路径数过多，未能在限制内展开。";
+        }
+    }
+
+    return result;
+}
+
+#endif  // __EMSCRIPTEN__
+
 }  // namespace
+
+#ifdef __EMSCRIPTEN__
+
+EMSCRIPTEN_BINDINGS(kmap_module) {
+    emscripten::value_object<WebResult>("WebResult")
+        .field("error", &WebResult::error)
+        .field("originalInput", &WebResult::originalInput)
+        .field("kmapText", &WebResult::kmapText)
+        .field("sop", &WebResult::sop)
+        .field("pos", &WebResult::pos);
+
+    emscripten::function("processExpressionWeb", &processForWeb);
+}
+
+#else
 
 int main() {
     initConsoleEncoding();
@@ -946,3 +1031,5 @@ int main() {
 
     return 0;
 }
+
+#endif  // !__EMSCRIPTEN__
