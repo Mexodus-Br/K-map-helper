@@ -21,6 +21,8 @@
   - 括号 `()` 改变优先级
 - 支持交互式循环输入
 - Windows 终端下会主动设置控制台编码，减少中文乱码问题
+- 支持通过 WebAssembly 在浏览器中调用同一套化简核心
+- 提供开箱即用的网页前端（`web/index.html`）
 
 ## 输入格式
 
@@ -69,6 +71,28 @@ g++ -std=c++17 -O2 -Wall -Wextra -pedantic main.cpp -o logic_kmap.exe
 
 输入空行，或输入 `exit`、`quit`、`q` 可退出程序。
 
+## WebAssembly 构建与网页运行
+
+如果你希望在浏览器中使用本程序：
+
+1. 安装并激活 Emscripten（确保 `emcc` 在 PATH 中）
+2. 在项目目录执行：
+
+```bash
+./build_wasm.sh
+```
+
+执行成功后会生成：
+
+- `web/kmap.js`
+- `web/kmap.wasm`
+
+然后直接打开 `web/index.html` 即可在页面中输入表达式并查看：
+
+- 最简与或表达式 `SOP`
+- 最简或与表达式 `POS`
+- 卡诺图文本输出
+
 ## 运行示例
 
 输入：
@@ -99,3 +123,6 @@ Z(a,b,c,d,e)=(d+e)(a+b+c)(B+C+D+E)(a+B+c+D+e)
 
 - `main.cpp`：主程序源码
 - `logic_kmap.exe`：编译后的 Windows 可执行文件
+- `build_wasm.sh`：WebAssembly 构建脚本
+- `web/index.html`：网页前端入口
+- `web/kmap.js` / `web/kmap.wasm`：WASM 构建输出
