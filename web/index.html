@@ -1,0 +1,292 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>卡诺图与逻辑表达式化简器</title>
+    <style>
+        * {
+            box-sizing: border-box;
+            margin: 0;
+            padding: 0;
+        }
+
+        body {
+            font-family: 'Segoe UI', system-ui, -apple-system, sans-serif;
+            background: #f0f2f5;
+            color: #333;
+            min-height: 100vh;
+            padding: 24px 16px;
+        }
+
+        .container {
+            max-width: 860px;
+            margin: 0 auto;
+        }
+
+        h1 {
+            font-size: 1.6rem;
+            font-weight: 700;
+            color: #1a1a2e;
+            margin-bottom: 4px;
+        }
+
+        .subtitle {
+            color: #666;
+            font-size: 0.9rem;
+            margin-bottom: 24px;
+        }
+
+        .card {
+            background: #fff;
+            border-radius: 12px;
+            padding: 24px;
+            box-shadow: 0 2px 8px rgba(0, 0, 0, 0.08);
+            margin-bottom: 20px;
+        }
+
+        .input-row {
+            display: flex;
+            gap: 10px;
+            align-items: stretch;
+        }
+
+        #expr-input {
+            flex: 1;
+            padding: 10px 14px;
+            border: 2px solid #dde1e7;
+            border-radius: 8px;
+            font-size: 1rem;
+            font-family: 'Courier New', monospace;
+            transition: border-color 0.2s;
+            outline: none;
+        }
+
+        #expr-input:focus {
+            border-color: #4f8ef7;
+        }
+
+        #solve-btn {
+            padding: 10px 24px;
+            background: #4f8ef7;
+            color: #fff;
+            border: none;
+            border-radius: 8px;
+            font-size: 1rem;
+            font-weight: 600;
+            cursor: pointer;
+            transition: background 0.2s, opacity 0.2s;
+            white-space: nowrap;
+        }
+
+        #solve-btn:hover:not(:disabled) {
+            background: #3370e0;
+        }
+
+        #solve-btn:disabled {
+            opacity: 0.5;
+            cursor: not-allowed;
+        }
+
+        .hint {
+            margin-top: 10px;
+            font-size: 0.82rem;
+            color: #888;
+            line-height: 1.6;
+        }
+
+        .hint code {
+            background: #f4f6f9;
+            padding: 1px 5px;
+            border-radius: 4px;
+            font-family: 'Courier New', monospace;
+            color: #555;
+        }
+
+        #status-bar {
+            font-size: 0.85rem;
+            color: #888;
+            margin-top: 8px;
+            min-height: 1.2em;
+        }
+
+        .result-section {
+            display: none;
+        }
+
+        .result-section.visible {
+            display: block;
+        }
+
+        .result-grid {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 16px;
+            margin-bottom: 16px;
+        }
+
+        @media (max-width: 560px) {
+            .result-grid {
+                grid-template-columns: 1fr;
+            }
+        }
+
+        .result-box {
+            background: #f8f9fb;
+            border-radius: 8px;
+            padding: 14px 16px;
+        }
+
+        .result-box .label {
+            font-size: 0.75rem;
+            font-weight: 700;
+            text-transform: uppercase;
+            letter-spacing: 0.06em;
+            color: #888;
+            margin-bottom: 6px;
+        }
+
+        .result-box .value {
+            font-family: 'Courier New', monospace;
+            font-size: 1.05rem;
+            color: #1a1a2e;
+            word-break: break-all;
+        }
+
+        #kmap-box {
+            background: #f8f9fb;
+            border-radius: 8px;
+            padding: 14px 16px;
+        }
+
+        #kmap-box .label {
+            font-size: 0.75rem;
+            font-weight: 700;
+            text-transform: uppercase;
+            letter-spacing: 0.06em;
+            color: #888;
+            margin-bottom: 8px;
+        }
+
+        #kmap-text {
+            font-family: 'Courier New', monospace;
+            font-size: 0.88rem;
+            white-space: pre;
+            overflow-x: auto;
+            line-height: 1.55;
+            color: #333;
+        }
+
+        .error-card {
+            background: #fff5f5;
+            border: 1px solid #fcc;
+            border-radius: 8px;
+            padding: 14px 16px;
+            color: #c0392b;
+            font-size: 0.95rem;
+            display: none;
+        }
+
+        .error-card.visible {
+            display: block;
+        }
+
+        .original-input {
+            font-size: 0.85rem;
+            color: #666;
+            margin-bottom: 14px;
+        }
+
+        .original-input span {
+            font-family: 'Courier New', monospace;
+            color: #4f8ef7;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>卡诺图 &amp; 逻辑化简器</h1>
+        <p class="subtitle">基于 C++ WebAssembly 引擎，支持最多 25 个变量的布尔表达式化简</p>
+
+        <div class="card">
+            <div class="input-row">
+                <input id="expr-input" type="text" placeholder="例如：F(a,b,c)=ab+Ac+bc"
+                    autocomplete="off" spellcheck="false" disabled>
+                <button id="solve-btn" disabled>化简</button>
+            </div>
+            <div class="hint">
+                格式：<code>F(a,b,c,...)=表达式</code> &nbsp;·&nbsp;
+                小写 = 原变量，大写 = 反变量 &nbsp;·&nbsp;
+                支持 <code>+</code>（或）、相邻 / <code>*</code> / <code>.</code>（与）、括号
+            </div>
+            <div id="status-bar">正在加载 WASM 引擎…</div>
+        </div>
+
+        <div id="error-card" class="error-card"></div>
+
+        <div id="result-section" class="result-section">
+            <div class="card">
+                <div id="original-input-line" class="original-input"></div>
+                <div class="result-grid">
+                    <div class="result-box">
+                        <div class="label">最简与或表达式 (SOP)</div>
+                        <div class="value" id="sop-value">—</div>
+                    </div>
+                    <div class="result-box">
+                        <div class="label">最简或与表达式 (POS)</div>
+                        <div class="value" id="pos-value">—</div>
+                    </div>
+                </div>
+                <div id="kmap-box">
+                    <div class="label">卡诺图</div>
+                    <pre id="kmap-text"></pre>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        var Module = {
+            onRuntimeInitialized: function () {
+                document.getElementById('expr-input').disabled = false;
+                document.getElementById('solve-btn').disabled = false;
+                document.getElementById('status-bar').textContent = 'WASM 引擎已就绪';
+            }
+        };
+    </script>
+    <script src="kmap.js"></script>
+    <script>
+        function solve() {
+            var input = document.getElementById('expr-input').value.trim();
+            if (!input) return;
+
+            var errorCard = document.getElementById('error-card');
+            var resultSection = document.getElementById('result-section');
+
+            errorCard.classList.remove('visible');
+            resultSection.classList.remove('visible');
+
+            var result = Module.processExpressionWeb(input);
+
+            if (result.error && result.error.length > 0) {
+                errorCard.textContent = '解析失败：' + result.error;
+                errorCard.classList.add('visible');
+                return;
+            }
+
+            document.getElementById('original-input-line').textContent =
+                '输入表达式：' + result.originalInput;
+            document.getElementById('sop-value').textContent = result.sop || '—';
+            document.getElementById('pos-value').textContent = result.pos || '—';
+            document.getElementById('kmap-text').textContent = result.kmapText;
+
+            resultSection.classList.add('visible');
+        }
+
+        document.getElementById('solve-btn').addEventListener('click', solve);
+        document.getElementById('expr-input').addEventListener('keydown', function (e) {
+            if (e.key === 'Enter') solve();
+        });
+    </script>
+</body>
+</html>
