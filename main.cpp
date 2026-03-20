@@ -70,6 +70,11 @@ void initConsoleEncoding() {
     setlocale(LC_ALL, ".UTF-8");
 }
 
+struct CanonicalIndexResult {
+    bool complete = false;
+    vector<uint32_t> indices;
+};
+
 struct HeaderParseResult {
     string functionName;
     vector<char> variables;
@@ -329,6 +334,10 @@ struct BDDManager {
         return nodeId == 1;
     }
 
+    bool collectSatisfyingIndices(int root, vector<uint32_t>& out, size_t limit) const {
+        return collectSatisfyingIndicesDfs(root, 0, 0u, out, limit);
+    }
+
     bool collectOnePaths(int root, vector<Cube>& out, size_t limit) const {
         Cube start;
         return collectOnePathsDfs(root, start, out, limit);
@@ -360,6 +369,54 @@ private:
         int low = cofactor(node.low, var, value);
         int high = cofactor(node.high, var, value);
         return makeNode(node.var, low, high);
+    }
+
+    bool emitAllCompletions(int nextVar, uint32_t prefix, vector<uint32_t>& out, size_t limit) const {
+        if (out.size() > limit) {
+            return false;
+        }
+        if (nextVar == variableCount) {
+            out.push_back(prefix);
+            return out.size() <= limit;
+        }
+
+        if (!emitAllCompletions(nextVar + 1, prefix, out, limit)) {
+            return false;
+        }
+
+        uint32_t bit = 1u << (variableCount - 1 - nextVar);
+        return emitAllCompletions(nextVar + 1, prefix | bit, out, limit);
+    }
+
+    bool collectSatisfyingIndicesDfs(int root, int nextVar, uint32_t prefix,
+                                     vector<uint32_t>& out, size_t limit) const {
+        if (out.size() > limit) {
+            return false;
+        }
+        if (root == 0) {
+            return true;
+        }
+        if (root == 1) {
+            return emitAllCompletions(nextVar, prefix, out, limit);
+        }
+        if (nextVar == variableCount) {
+            return true;
+        }
+
+        const Node& node = nodes[root];
+        if (node.var == nextVar) {
+            if (!collectSatisfyingIndicesDfs(node.low, nextVar + 1, prefix, out, limit)) {
+                return false;
+            }
+            uint32_t bit = 1u << (variableCount - 1 - nextVar);
+            return collectSatisfyingIndicesDfs(node.high, nextVar + 1, prefix | bit, out, limit);
+        }
+
+        uint32_t bit = 1u << (variableCount - 1 - nextVar);
+        if (!collectSatisfyingIndicesDfs(root, nextVar + 1, prefix, out, limit)) {
+            return false;
+        }
+        return collectSatisfyingIndicesDfs(root, nextVar + 1, prefix | bit, out, limit);
     }
 
     bool collectOnePathsDfs(int root, Cube current, vector<Cube>& out, size_t limit) const {
@@ -858,6 +915,38 @@ bool buildAndSimplifyCover(BDDManager& manager, int root, int complementRoot, ve
     return true;
 }
 
+CanonicalIndexResult buildCanonicalIndexList(BDDManager& manager, int root) {
+    const size_t kIndexLimit = 100000;
+    CanonicalIndexResult result;
+    result.complete = manager.collectSatisfyingIndices(root, result.indices, kIndexLimit);
+    return result;
+}
+
+string joinIndices(const vector<uint32_t>& indices) {
+    ostringstream oss;
+    for (size_t i = 0; i < indices.size(); ++i) {
+        if (i != 0) {
+            oss << ',';
+        }
+        oss << indices[i];
+    }
+    return oss.str();
+}
+
+string formatMintermExpression(const CanonicalIndexResult& onSet) {
+    if (!onSet.complete) {
+        return u8"项数过多，未能在限制内展开。";
+    }
+    return u8"Σm(" + joinIndices(onSet.indices) + ")";
+}
+
+string formatMaxtermExpression(const CanonicalIndexResult& offSet) {
+    if (!offSet.complete) {
+        return u8"项数过多，未能在限制内展开。";
+    }
+    return u8"ΠM(" + joinIndices(offSet.indices) + ")";
+}
+
 void printInteractiveHint() {
     cout << u8"逻辑表达式卡诺图与化简程序\n";
     cout << u8"输入格式提示:\n";
@@ -888,6 +977,8 @@ void processExpression(const string& rawInput) {
     }
 
     int notFunctionRoot = manager.negate(functionRoot);
+    CanonicalIndexResult mintermIndices = buildCanonicalIndexList(manager, functionRoot);
+    CanonicalIndexResult maxtermIndices = buildCanonicalIndexList(manager, notFunctionRoot);
 
     cout << u8"输入表达式: " << header.normalizedInput << "\n\n";
     printKMap(cout, manager, functionRoot, header.variables);
@@ -907,20 +998,20 @@ void processExpression(const string& rawInput) {
     }
 
     if (functionRoot == 0) {
-        cout << u8"最简或与表达式(POS): 0\n\n";
-        return;
-    }
-    if (functionRoot == 1) {
-        cout << u8"最简或与表达式(POS): 1\n\n";
-        return;
+        cout << u8"最简或与表达式(POS): 0\n";
+    } else if (functionRoot == 1) {
+        cout << u8"最简或与表达式(POS): 1\n";
+    } else {
+        vector<Cube> simplifiedPOSCover;
+        if (buildAndSimplifyCover(manager, notFunctionRoot, functionRoot, simplifiedPOSCover)) {
+            cout << u8"最简或与表达式(POS): " << coverToPOS(simplifiedPOSCover, header.variables) << '\n';
+        } else {
+            cout << u8"最简或与表达式(POS): 路径数过多，未能在限制内展开。\n";
+        }
     }
 
-    vector<Cube> simplifiedPOSCover;
-    if (buildAndSimplifyCover(manager, notFunctionRoot, functionRoot, simplifiedPOSCover)) {
-        cout << u8"最简或与表达式(POS): " << coverToPOS(simplifiedPOSCover, header.variables) << "\n\n";
-    } else {
-        cout << u8"最简或与表达式(POS): 路径数过多，未能在限制内展开。\n\n";
-    }
+    cout << u8"最小项表达式: " << formatMintermExpression(mintermIndices) << '\n';
+    cout << u8"最大项表达式: " << formatMaxtermExpression(maxtermIndices) << "\n\n";
 }
 
 #ifdef __EMSCRIPTEN__
@@ -931,6 +1022,8 @@ struct WebResult {
     string kmapText;
     string sop;
     string pos;
+    string minterms;
+    string maxterms;
 };
 
 WebResult processForWeb(const string& rawInput) {
@@ -953,10 +1046,14 @@ WebResult processForWeb(const string& rawInput) {
     result.originalInput = header.normalizedInput;
 
     int notFunctionRoot = manager.negate(functionRoot);
+    CanonicalIndexResult mintermIndices = buildCanonicalIndexList(manager, functionRoot);
+    CanonicalIndexResult maxtermIndices = buildCanonicalIndexList(manager, notFunctionRoot);
 
     ostringstream kmapStream;
     printKMap(kmapStream, manager, functionRoot, header.variables);
     result.kmapText = kmapStream.str();
+    result.minterms = formatMintermExpression(mintermIndices);
+    result.maxterms = formatMaxtermExpression(maxtermIndices);
 
     if (functionRoot == 0) {
         result.sop = "0";
@@ -999,7 +1096,9 @@ EMSCRIPTEN_BINDINGS(kmap_module) {
         .field("originalInput", &WebResult::originalInput)
         .field("kmapText", &WebResult::kmapText)
         .field("sop", &WebResult::sop)
-        .field("pos", &WebResult::pos);
+        .field("pos", &WebResult::pos)
+        .field("minterms", &WebResult::minterms)
+        .field("maxterms", &WebResult::maxterms);
 
     emscripten::function("processExpressionWeb", &processForWeb);
 }

@@ -236,6 +236,14 @@
                         <div class="label">最简或与表达式 (POS)</div>
                         <div class="value" id="pos-value">—</div>
                     </div>
+                    <div class="result-box">
+                        <div class="label">最小项表达式</div>
+                        <div class="value" id="minterms-value">—</div>
+                    </div>
+                    <div class="result-box">
+                        <div class="label">最大项表达式</div>
+                        <div class="value" id="maxterms-value">—</div>
+                    </div>
                 </div>
                 <div id="kmap-box">
                     <div class="label">卡诺图</div>
@@ -278,6 +286,8 @@
                 '输入表达式：' + result.originalInput;
             document.getElementById('sop-value').textContent = result.sop || '—';
             document.getElementById('pos-value').textContent = result.pos || '—';
+            document.getElementById('minterms-value').textContent = result.minterms || '—';
+            document.getElementById('maxterms-value').textContent = result.maxterms || '—';
             document.getElementById('kmap-text').textContent = result.kmapText;
 
             resultSection.classList.add('visible');
