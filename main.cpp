@@ -75,6 +75,32 @@ struct CanonicalIndexResult {
     vector<uint32_t> indices;
 };
 
+struct KMapCellRef {
+    int row = 0;
+    int col = 0;
+};
+
+struct KMapLayout {
+    string rowVarText;
+    string colVarText;
+    int rowVars = 0;
+    int colVars = 0;
+    int rowCount = 0;
+    int colCount = 0;
+    bool omitted = false;
+    string summary;
+    vector<string> rowLabels;
+    vector<string> colLabels;
+    vector<int> cellValues;
+    vector<uint32_t> assignments;
+};
+
+struct WebTerm {
+    string text;
+    int value = 0;
+    vector<KMapCellRef> cells;
+};
+
 struct HeaderParseResult {
     string functionName;
     vector<char> variables;
@@ -824,81 +850,162 @@ string bitLabel(int grayValue, int bitCount) {
     return label;
 }
 
-void printKMap(ostream& out, BDDManager& manager, int functionRoot, const vector<char>& variables) {
+uint32_t assignmentFromGrayIndices(int rowGray, int colGray, int rowVars, int colVars) {
+    uint32_t assignment = 0;
+    for (int i = 0; i < rowVars; ++i) {
+        int shift = rowVars - 1 - i;
+        if ((rowGray >> shift) & 1) {
+            assignment |= (1u << i);
+        }
+    }
+    for (int i = 0; i < colVars; ++i) {
+        int shift = colVars - 1 - i;
+        if ((colGray >> shift) & 1) {
+            assignment |= (1u << (rowVars + i));
+        }
+    }
+    return assignment;
+}
+
+KMapLayout buildKMapLayout(BDDManager& manager, int functionRoot, const vector<char>& variables) {
+    KMapLayout layout;
     const int variableCount = static_cast<int>(variables.size());
-    const int rowVars = variableCount / 2;
-    const int colVars = variableCount - rowVars;
-    const size_t rowCount = size_t{1} << rowVars;
-    const size_t colCount = size_t{1} << colVars;
-    const size_t cellCount = rowCount * colCount;
+    layout.rowVars = variableCount / 2;
+    layout.colVars = variableCount - layout.rowVars;
+    layout.rowCount = 1 << layout.rowVars;
+    layout.colCount = 1 << layout.colVars;
+    const size_t cellCount = static_cast<size_t>(layout.rowCount) * static_cast<size_t>(layout.colCount);
     const size_t kFullPrintLimit = 1024;
 
-    string rowVarText;
-    for (int i = 0; i < rowVars; ++i) {
-        rowVarText.push_back(variables[i]);
+    for (int i = 0; i < layout.rowVars; ++i) {
+        layout.rowVarText.push_back(variables[i]);
     }
-    if (rowVarText.empty()) {
-        rowVarText = "-";
+    if (layout.rowVarText.empty()) {
+        layout.rowVarText = "-";
     }
 
-    string colVarText;
-    for (int i = rowVars; i < variableCount; ++i) {
-        colVarText.push_back(variables[i]);
+    for (int i = layout.rowVars; i < variableCount; ++i) {
+        layout.colVarText.push_back(variables[i]);
     }
-    if (colVarText.empty()) {
-        colVarText = "-";
+    if (layout.colVarText.empty()) {
+        layout.colVarText = "-";
     }
+
+    ostringstream summary;
+    summary << u8"行变量: " << layout.rowVarText << u8"，列变量: " << layout.colVarText
+            << u8"，尺寸: " << layout.rowCount << " x " << layout.colCount;
+    layout.summary = summary.str();
+
+    layout.omitted = cellCount > kFullPrintLimit;
+    if (layout.omitted) {
+        return layout;
+    }
+
+    layout.rowLabels.resize(layout.rowCount);
+    layout.colLabels.resize(layout.colCount);
+    layout.cellValues.reserve(cellCount);
+    layout.assignments.reserve(cellCount);
+
+    for (int i = 0; i < layout.rowCount; ++i) {
+        layout.rowLabels[i] = bitLabel(i ^ (i >> 1), layout.rowVars);
+    }
+    for (int i = 0; i < layout.colCount; ++i) {
+        layout.colLabels[i] = bitLabel(i ^ (i >> 1), layout.colVars);
+    }
+
+    for (int r = 0; r < layout.rowCount; ++r) {
+        int rowGray = r ^ (r >> 1);
+        for (int c = 0; c < layout.colCount; ++c) {
+            int colGray = c ^ (c >> 1);
+            uint32_t assignment = assignmentFromGrayIndices(rowGray, colGray, layout.rowVars, layout.colVars);
+            layout.assignments.push_back(assignment);
+            layout.cellValues.push_back(manager.evaluate(functionRoot, assignment) ? 1 : 0);
+        }
+    }
+
+    return layout;
+}
+
+#ifdef __EMSCRIPTEN__
+
+bool cubeMatchesAssignment(const Cube& cube, uint32_t assignment) {
+    return (((assignment ^ cube.valueMask) & cube.fixedMask) == 0);
+}
+
+vector<KMapCellRef> cubeToKMapCells(const Cube& cube, const KMapLayout& layout) {
+    vector<KMapCellRef> cells;
+    if (layout.omitted) {
+        return cells;
+    }
+
+    const size_t totalCells = layout.assignments.size();
+    cells.reserve(totalCells);
+    for (size_t i = 0; i < totalCells; ++i) {
+        if (!cubeMatchesAssignment(cube, layout.assignments[i])) {
+            continue;
+        }
+        cells.push_back(KMapCellRef{
+            static_cast<int>(i / static_cast<size_t>(layout.colCount)),
+            static_cast<int>(i % static_cast<size_t>(layout.colCount)),
+        });
+    }
+    return cells;
+}
+
+vector<WebTerm> buildSOPTerms(const vector<Cube>& cover, const vector<char>& variables, const KMapLayout& layout) {
+    vector<WebTerm> terms;
+    terms.reserve(cover.size());
+    for (const Cube& cube : cover) {
+        terms.push_back(WebTerm{cubeToSOPTerm(cube, variables), 1, cubeToKMapCells(cube, layout)});
+    }
+    return terms;
+}
+
+vector<WebTerm> buildPOSTerms(const vector<Cube>& offCover, const vector<char>& variables, const KMapLayout& layout) {
+    vector<WebTerm> terms;
+    terms.reserve(offCover.size());
+    for (const Cube& cube : offCover) {
+        terms.push_back(WebTerm{cubeToPOSClause(cube, variables), 0, cubeToKMapCells(cube, layout)});
+    }
+    return terms;
+}
+
+#endif
+
+void printKMap(ostream& out, BDDManager& manager, int functionRoot, const vector<char>& variables) {
+    KMapLayout layout = buildKMapLayout(manager, functionRoot, variables);
 
     out << u8"卡诺图\n";
-    out << u8"行变量: " << rowVarText << u8"，列变量: " << colVarText
-        << u8"，尺寸: " << rowCount << " x " << colCount << '\n';
+    out << layout.summary << '\n';
     out << u8"Gray 顺序按二进制标签显示。\n";
 
-    if (cellCount > kFullPrintLimit) {
-        out << u8"变量过多，完整卡诺图共有 " << cellCount
+    if (layout.omitted) {
+        out << u8"变量过多，完整卡诺图共有 "
+            << (static_cast<size_t>(layout.rowCount) * static_cast<size_t>(layout.colCount))
             << u8" 个单元，已省略具体表格输出。\n";
         return;
     }
 
-    vector<string> rowLabels(rowCount);
-    vector<string> colLabels(colCount);
     size_t width = 1;
-    for (size_t i = 0; i < rowCount; ++i) {
-        rowLabels[i] = bitLabel(static_cast<int>(i ^ (i >> 1)), rowVars);
-        width = max(width, rowLabels[i].size());
+    for (const string& label : layout.rowLabels) {
+        width = max(width, label.size());
     }
-    for (size_t i = 0; i < colCount; ++i) {
-        colLabels[i] = bitLabel(static_cast<int>(i ^ (i >> 1)), colVars);
-        width = max(width, colLabels[i].size());
+    for (const string& label : layout.colLabels) {
+        width = max(width, label.size());
     }
     width = max<size_t>(width, 3);
 
     out << setw(static_cast<int>(width)) << "";
-    for (const string& label : colLabels) {
+    for (const string& label : layout.colLabels) {
         out << ' ' << setw(static_cast<int>(width)) << label;
     }
     out << '\n';
 
-    for (size_t r = 0; r < rowCount; ++r) {
-        out << setw(static_cast<int>(width)) << rowLabels[r];
-        int rowGray = static_cast<int>(r ^ (r >> 1));
-        for (size_t c = 0; c < colCount; ++c) {
-            int colGray = static_cast<int>(c ^ (c >> 1));
-            uint32_t assignment = 0;
-            for (int i = 0; i < rowVars; ++i) {
-                int shift = rowVars - 1 - i;
-                if ((rowGray >> shift) & 1) {
-                    assignment |= (1u << i);
-                }
-            }
-            for (int i = 0; i < colVars; ++i) {
-                int shift = colVars - 1 - i;
-                if ((colGray >> shift) & 1) {
-                    assignment |= (1u << (rowVars + i));
-                }
-            }
+    for (int r = 0; r < layout.rowCount; ++r) {
+        out << setw(static_cast<int>(width)) << layout.rowLabels[r];
+        for (int c = 0; c < layout.colCount; ++c) {
             out << ' ' << setw(static_cast<int>(width))
-                << (manager.evaluate(functionRoot, assignment) ? '1' : '0');
+                << layout.cellValues[static_cast<size_t>(r) * static_cast<size_t>(layout.colCount) + static_cast<size_t>(c)];
         }
         out << '\n';
     }
@@ -1020,10 +1127,21 @@ struct WebResult {
     string error;
     string originalInput;
     string kmapText;
+    bool kmapOmitted = false;
+    string kmapSummary;
+    string kmapRowVars;
+    string kmapColVars;
+    int kmapRowCount = 0;
+    int kmapColCount = 0;
+    vector<string> kmapRowLabels;
+    vector<string> kmapColLabels;
+    vector<int> kmapCells;
     string sop;
     string pos;
     string minterms;
     string maxterms;
+    vector<WebTerm> sopTerms;
+    vector<WebTerm> posTerms;
 };
 
 WebResult processForWeb(const string& rawInput) {
@@ -1048,10 +1166,20 @@ WebResult processForWeb(const string& rawInput) {
     int notFunctionRoot = manager.negate(functionRoot);
     CanonicalIndexResult mintermIndices = buildCanonicalIndexList(manager, functionRoot);
     CanonicalIndexResult maxtermIndices = buildCanonicalIndexList(manager, notFunctionRoot);
+    KMapLayout layout = buildKMapLayout(manager, functionRoot, header.variables);
 
     ostringstream kmapStream;
     printKMap(kmapStream, manager, functionRoot, header.variables);
     result.kmapText = kmapStream.str();
+    result.kmapOmitted = layout.omitted;
+    result.kmapSummary = layout.summary;
+    result.kmapRowVars = layout.rowVarText;
+    result.kmapColVars = layout.colVarText;
+    result.kmapRowCount = layout.rowCount;
+    result.kmapColCount = layout.colCount;
+    result.kmapRowLabels = layout.rowLabels;
+    result.kmapColLabels = layout.colLabels;
+    result.kmapCells = layout.cellValues;
     result.minterms = formatMintermExpression(mintermIndices);
     result.maxterms = formatMaxtermExpression(maxtermIndices);
 
@@ -1063,6 +1191,7 @@ WebResult processForWeb(const string& rawInput) {
         vector<Cube> simplifiedSOP;
         if (buildAndSimplifyCover(manager, functionRoot, notFunctionRoot, simplifiedSOP)) {
             result.sop = coverToSOP(simplifiedSOP, header.variables);
+            result.sopTerms = buildSOPTerms(simplifiedSOP, header.variables, layout);
         } else {
             result.sop = u8"路径数过多，未能在限制内展开。";
         }
@@ -1076,6 +1205,7 @@ WebResult processForWeb(const string& rawInput) {
         vector<Cube> simplifiedPOSCover;
         if (buildAndSimplifyCover(manager, notFunctionRoot, functionRoot, simplifiedPOSCover)) {
             result.pos = coverToPOS(simplifiedPOSCover, header.variables);
+            result.posTerms = buildPOSTerms(simplifiedPOSCover, header.variables, layout);
         } else {
             result.pos = u8"路径数过多，未能在限制内展开。";
         }
@@ -1091,14 +1221,40 @@ WebResult processForWeb(const string& rawInput) {
 #ifdef __EMSCRIPTEN__
 
 EMSCRIPTEN_BINDINGS(kmap_module) {
+    emscripten::value_object<KMapCellRef>("KMapCellRef")
+        .field("row", &KMapCellRef::row)
+        .field("col", &KMapCellRef::col);
+
+    emscripten::register_vector<KMapCellRef>("VectorKMapCellRef");
+    emscripten::register_vector<int>("VectorInt");
+    emscripten::register_vector<string>("VectorString");
+
+    emscripten::value_object<WebTerm>("WebTerm")
+        .field("text", &WebTerm::text)
+        .field("value", &WebTerm::value)
+        .field("cells", &WebTerm::cells);
+
+    emscripten::register_vector<WebTerm>("VectorWebTerm");
+
     emscripten::value_object<WebResult>("WebResult")
         .field("error", &WebResult::error)
         .field("originalInput", &WebResult::originalInput)
         .field("kmapText", &WebResult::kmapText)
+        .field("kmapOmitted", &WebResult::kmapOmitted)
+        .field("kmapSummary", &WebResult::kmapSummary)
+        .field("kmapRowVars", &WebResult::kmapRowVars)
+        .field("kmapColVars", &WebResult::kmapColVars)
+        .field("kmapRowCount", &WebResult::kmapRowCount)
+        .field("kmapColCount", &WebResult::kmapColCount)
+        .field("kmapRowLabels", &WebResult::kmapRowLabels)
+        .field("kmapColLabels", &WebResult::kmapColLabels)
+        .field("kmapCells", &WebResult::kmapCells)
         .field("sop", &WebResult::sop)
         .field("pos", &WebResult::pos)
         .field("minterms", &WebResult::minterms)
-        .field("maxterms", &WebResult::maxterms);
+        .field("maxterms", &WebResult::maxterms)
+        .field("sopTerms", &WebResult::sopTerms)
+        .field("posTerms", &WebResult::posTerms);
 
     emscripten::function("processExpressionWeb", &processForWeb);
 }

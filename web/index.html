@@ -5,297 +5,1139 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>卡诺图与逻辑表达式化简器</title>
     <style>
+        :root {
+            --surface: rgba(255, 255, 255, 0.84);
+            --surface-strong: #ffffff;
+            --surface-muted: #f5f8f7;
+            --border: rgba(16, 34, 29, 0.12);
+            --border-strong: rgba(16, 34, 29, 0.22);
+            --text: #16312c;
+            --text-soft: #5d716b;
+            --heading: #0f2520;
+            --primary: #15736a;
+            --primary-strong: #0d5e56;
+            --primary-soft: rgba(21, 115, 106, 0.12);
+            --warm: #d96d28;
+            --error: #bf3b3b;
+            --error-soft: rgba(191, 59, 59, 0.12);
+            --shadow: 0 20px 50px rgba(13, 47, 40, 0.10);
+            --radius-xl: 26px;
+            --radius-lg: 18px;
+            --radius-md: 14px;
+            --mono: "Cascadia Code", "JetBrains Mono", "Consolas", monospace;
+            --sans: "Segoe UI", "PingFang SC", "Microsoft YaHei", sans-serif;
+        }
+
         * {
             box-sizing: border-box;
-            margin: 0;
-            padding: 0;
         }
 
         body {
-            font-family: 'Segoe UI', system-ui, -apple-system, sans-serif;
-            background: #f0f2f5;
-            color: #333;
+            margin: 0;
             min-height: 100vh;
-            padding: 24px 16px;
+            font-family: var(--sans);
+            color: var(--text);
+            background:
+                radial-gradient(circle at top left, rgba(63, 141, 127, 0.18), transparent 30%),
+                linear-gradient(180deg, #f5f8f7 0%, #edf3f1 100%);
         }
 
-        .container {
-            max-width: 860px;
+        body::before {
+            content: "";
+            position: fixed;
+            inset: 0;
+            pointer-events: none;
+            background-image:
+                linear-gradient(rgba(14, 44, 38, 0.03) 1px, transparent 1px),
+                linear-gradient(90deg, rgba(14, 44, 38, 0.03) 1px, transparent 1px);
+            background-size: 28px 28px;
+            mask-image: linear-gradient(180deg, rgba(0, 0, 0, 0.48), transparent 88%);
+        }
+
+        .page {
+            width: min(940px, calc(100vw - 20px));
             margin: 0 auto;
+            padding: 14px 0 20px;
+        }
+
+        .hero {
+            display: grid;
+            grid-template-columns: minmax(0, 1.2fr) minmax(260px, 0.8fr);
+            gap: 10px;
+            margin-bottom: 10px;
+        }
+
+        .hero-card,
+        .panel,
+        .result-card,
+        .kmap-panel,
+        .error-card {
+            border: 1px solid var(--border);
+            border-radius: var(--radius-xl);
+            background: var(--surface);
+            backdrop-filter: blur(10px);
+            box-shadow: var(--shadow);
+        }
+
+        .hero-card {
+            padding: 18px 20px;
+            background:
+                linear-gradient(135deg, rgba(255, 255, 255, 0.94), rgba(247, 252, 250, 0.88)),
+                linear-gradient(135deg, rgba(21, 115, 106, 0.04), rgba(217, 109, 40, 0.04));
+        }
+
+        .eyebrow {
+            display: inline-flex;
+            align-items: center;
+            gap: 8px;
+            padding: 6px 10px;
+            border-radius: 999px;
+            background: var(--primary-soft);
+            color: var(--primary-strong);
+            font-size: 11px;
+            font-weight: 700;
+            letter-spacing: 0.08em;
+            text-transform: uppercase;
+            margin-bottom: 10px;
         }
 
         h1 {
-            font-size: 1.6rem;
+            margin: 0 0 8px;
+            font-size: clamp(1.4rem, 2vw, 2rem);
+            line-height: 1.04;
+            color: var(--heading);
+        }
+
+        .hero-copy {
+            margin: 0;
+            color: var(--text-soft);
+            font-size: 12px;
+            line-height: 1.55;
+            max-width: 52ch;
+        }
+
+        .hero-side {
+            display: grid;
+            grid-template-columns: repeat(2, minmax(0, 1fr));
+            gap: 10px;
+        }
+
+        .hero-stat {
+            padding: 14px 16px;
+        }
+
+        .hero-stat .label {
+            color: var(--text-soft);
+            font-size: 10px;
+            letter-spacing: 0.08em;
+            text-transform: uppercase;
             font-weight: 700;
-            color: #1a1a2e;
+            margin-bottom: 6px;
+        }
+
+        .hero-stat .value {
+            color: var(--heading);
+            font-size: 19px;
+            font-weight: 800;
             margin-bottom: 4px;
         }
 
-        .subtitle {
-            color: #666;
-            font-size: 0.9rem;
-            margin-bottom: 24px;
+        .hero-stat p {
+            margin: 0;
+            color: var(--text-soft);
+            font-size: 11px;
+            line-height: 1.45;
         }
 
-        .card {
-            background: #fff;
-            border-radius: 12px;
-            padding: 24px;
-            box-shadow: 0 2px 8px rgba(0, 0, 0, 0.08);
-            margin-bottom: 20px;
+        .workspace {
+            display: grid;
+            grid-template-columns: minmax(0, 1fr) minmax(260px, 320px);
+            gap: 10px;
+            align-items: start;
+        }
+
+        .panel {
+            padding: 16px;
+        }
+
+        .panel-title {
+            margin: 0 0 6px;
+            font-size: 16px;
+            color: var(--heading);
+        }
+
+        .panel-subtitle {
+            margin: 0 0 10px;
+            color: var(--text-soft);
+            font-size: 12px;
+            line-height: 1.5;
+        }
+
+        .input-shell {
+            display: grid;
+            gap: 10px;
         }
 
         .input-row {
-            display: flex;
+            display: grid;
+            grid-template-columns: minmax(0, 1fr) auto;
             gap: 10px;
-            align-items: stretch;
         }
 
         #expr-input {
-            flex: 1;
+            width: 100%;
+            min-height: 46px;
             padding: 10px 14px;
-            border: 2px solid #dde1e7;
-            border-radius: 8px;
-            font-size: 1rem;
-            font-family: 'Courier New', monospace;
-            transition: border-color 0.2s;
+            border: 1px solid transparent;
+            border-radius: var(--radius-md);
+            background: var(--surface-strong);
+            box-shadow: inset 0 0 0 1px var(--border);
+            color: var(--heading);
+            font: 500 13px/1.4 var(--mono);
+            transition: box-shadow 0.2s ease, transform 0.2s ease;
             outline: none;
         }
 
         #expr-input:focus {
-            border-color: #4f8ef7;
+            box-shadow: inset 0 0 0 1px rgba(21, 115, 106, 0.4), 0 0 0 4px rgba(21, 115, 106, 0.12);
+            transform: translateY(-1px);
+        }
+
+        #solve-btn,
+        .view-toggle button,
+        .term-chip {
+            border: none;
+            font-weight: 700;
+            transition: transform 0.18s ease, opacity 0.18s ease, background 0.18s ease, box-shadow 0.18s ease;
         }
 
         #solve-btn {
-            padding: 10px 24px;
-            background: #4f8ef7;
-            color: #fff;
-            border: none;
-            border-radius: 8px;
-            font-size: 1rem;
-            font-weight: 600;
+            min-width: 96px;
+            padding: 0 14px;
+            border-radius: var(--radius-md);
+            background: linear-gradient(135deg, var(--primary), var(--primary-strong));
+            color: white;
+            font-size: 13px;
             cursor: pointer;
-            transition: background 0.2s, opacity 0.2s;
-            white-space: nowrap;
+            box-shadow: 0 14px 24px rgba(21, 115, 106, 0.24);
         }
 
         #solve-btn:hover:not(:disabled) {
-            background: #3370e0;
+            transform: translateY(-1px);
         }
 
         #solve-btn:disabled {
-            opacity: 0.5;
+            opacity: 0.55;
             cursor: not-allowed;
+            transform: none;
+            box-shadow: none;
         }
 
-        .hint {
-            margin-top: 10px;
-            font-size: 0.82rem;
-            color: #888;
-            line-height: 1.6;
-        }
-
-        .hint code {
-            background: #f4f6f9;
-            padding: 1px 5px;
-            border-radius: 4px;
-            font-family: 'Courier New', monospace;
-            color: #555;
-        }
-
-        #status-bar {
-            font-size: 0.85rem;
-            color: #888;
-            margin-top: 8px;
-            min-height: 1.2em;
-        }
-
-        .result-section {
-            display: none;
-        }
-
-        .result-section.visible {
-            display: block;
-        }
-
-        .result-grid {
+        .quick-help {
             display: grid;
-            grid-template-columns: 1fr 1fr;
-            gap: 16px;
-            margin-bottom: 16px;
+            gap: 10px;
+            grid-template-columns: repeat(2, minmax(0, 1fr));
         }
 
-        @media (max-width: 560px) {
-            .result-grid {
-                grid-template-columns: 1fr;
-            }
+        .mini-card {
+            border-radius: var(--radius-lg);
+            background: var(--surface-muted);
+            border: 1px solid var(--border);
+            padding: 12px;
         }
 
-        .result-box {
-            background: #f8f9fb;
-            border-radius: 8px;
-            padding: 14px 16px;
-        }
-
-        .result-box .label {
-            font-size: 0.75rem;
+        .mini-label {
+            display: block;
+            margin-bottom: 6px;
+            color: var(--heading);
+            font-size: 12px;
             font-weight: 700;
-            text-transform: uppercase;
-            letter-spacing: 0.06em;
-            color: #888;
+        }
+
+        .mini-card p,
+        .mini-card ul {
+            margin: 0;
+            color: var(--text-soft);
+            font-size: 11px;
+            line-height: 1.5;
+        }
+
+        .mini-card ul {
+            padding-left: 18px;
+        }
+
+        .mini-card li {
             margin-bottom: 6px;
         }
 
-        .result-box .value {
-            font-family: 'Courier New', monospace;
-            font-size: 1.05rem;
-            color: #1a1a2e;
-            word-break: break-all;
-        }
-
-        #kmap-box {
-            background: #f8f9fb;
+        .mini-card code {
+            display: block;
+            max-width: 100%;
+            margin-top: 6px;
+            padding: 6px 8px;
             border-radius: 8px;
-            padding: 14px 16px;
+            background: rgba(21, 115, 106, 0.08);
+            color: var(--primary-strong);
+            font-family: var(--mono);
+            font-size: 11px;
+            line-height: 1.45;
+            white-space: normal;
+            overflow-wrap: anywhere;
+            word-break: break-word;
         }
 
-        #kmap-box .label {
-            font-size: 0.75rem;
-            font-weight: 700;
-            text-transform: uppercase;
-            letter-spacing: 0.06em;
-            color: #888;
-            margin-bottom: 8px;
+        .inline-code {
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            min-width: 34px;
+            padding: 4px 8px;
+            margin: 0 4px;
+            border-radius: 999px;
+            background: rgba(21, 115, 106, 0.08);
+            color: var(--primary-strong);
+            font-family: var(--mono);
+            font-size: 13px;
+            line-height: 1.2;
+            vertical-align: middle;
         }
 
-        #kmap-text {
-            font-family: 'Courier New', monospace;
-            font-size: 0.88rem;
-            white-space: pre;
-            overflow-x: auto;
-            line-height: 1.55;
-            color: #333;
+        .rule-text {
+            display: inline;
+            white-space: normal;
+            overflow-wrap: anywhere;
+        }
+
+        #status-bar {
+            min-height: 20px;
+            padding: 8px 10px;
+            border-radius: 12px;
+            background: rgba(255, 255, 255, 0.72);
+            border: 1px solid var(--border);
+            color: var(--text-soft);
+            font-size: 11px;
+        }
+
+        #status-bar[data-tone="ready"] {
+            color: var(--primary-strong);
+            background: rgba(21, 115, 106, 0.09);
+        }
+
+        #status-bar[data-tone="busy"] {
+            color: var(--heading);
+            background: rgba(15, 37, 32, 0.06);
+        }
+
+        #status-bar[data-tone="error"] {
+            color: var(--error);
+            background: var(--error-soft);
         }
 
         .error-card {
-            background: #fff5f5;
-            border: 1px solid #fcc;
-            border-radius: 8px;
-            padding: 14px 16px;
-            color: #c0392b;
-            font-size: 0.95rem;
             display: none;
+            margin: 10px 0 0;
+            padding: 12px 14px;
+            color: var(--error);
+            background: rgba(255, 245, 245, 0.88);
+            border-color: rgba(191, 59, 59, 0.18);
         }
 
-        .error-card.visible {
+        .error-card.visible,
+        .results.visible {
             display: block;
         }
 
+        .results {
+            display: none;
+            margin-top: 10px;
+        }
+
+        .results-grid {
+            display: grid;
+            grid-template-columns: repeat(2, minmax(0, 1fr));
+            gap: 10px;
+            margin-bottom: 10px;
+        }
+
+        .result-card {
+            padding: 14px;
+            min-height: 120px;
+        }
+
+        .card-label {
+            font-size: 10px;
+            letter-spacing: 0.08em;
+            text-transform: uppercase;
+            font-weight: 800;
+            color: var(--text-soft);
+            margin-bottom: 8px;
+        }
+
+        .plain-expression {
+            font-family: var(--mono);
+            font-size: 13px;
+            line-height: 1.45;
+            color: var(--heading);
+            word-break: break-word;
+        }
+
+        .term-line {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 6px 5px;
+            align-items: center;
+            min-height: 40px;
+        }
+
+        .term-separator {
+            color: var(--text-soft);
+            font-family: var(--mono);
+            font-size: 14px;
+            font-weight: 700;
+        }
+
+        .term-chip {
+            appearance: none;
+            border: 1px solid transparent;
+            border-radius: 999px;
+            background: rgba(255, 255, 255, 0.76);
+            color: var(--heading);
+            padding: 6px 10px;
+            font-family: var(--mono);
+            font-size: 12px;
+            line-height: 1.2;
+            cursor: pointer;
+        }
+
+        .term-chip:hover,
+        .term-chip:focus-visible {
+            transform: translateY(-1px);
+            outline: none;
+        }
+
+        .term-chip.sop {
+            background: rgba(21, 115, 106, 0.08);
+        }
+
+        .term-chip.pos {
+            background: rgba(217, 109, 40, 0.09);
+        }
+
+        .term-chip.active.sop,
+        .term-chip:hover.sop,
+        .term-chip:focus-visible.sop {
+            border-color: rgba(21, 115, 106, 0.28);
+            box-shadow: 0 10px 20px rgba(21, 115, 106, 0.15);
+        }
+
+        .term-chip.active.pos,
+        .term-chip:hover.pos,
+        .term-chip:focus-visible.pos {
+            border-color: rgba(217, 109, 40, 0.24);
+            box-shadow: 0 10px 20px rgba(217, 109, 40, 0.14);
+        }
+
         .original-input {
-            font-size: 0.85rem;
-            color: #666;
-            margin-bottom: 14px;
+            margin-bottom: 10px;
+            padding: 10px 12px;
+            border-radius: 14px;
+            background: rgba(255, 255, 255, 0.78);
+            border: 1px solid var(--border);
+            font-size: 12px;
+            color: var(--text-soft);
+        }
+
+        .original-input strong {
+            color: var(--heading);
+            display: inline-block;
+            margin-right: 8px;
         }
 
         .original-input span {
-            font-family: 'Courier New', monospace;
-            color: #4f8ef7;
+            color: var(--primary-strong);
+            font-family: var(--mono);
+            word-break: break-word;
+        }
+
+        .kmap-panel {
+            padding: 14px;
+        }
+
+        .kmap-head {
+            display: flex;
+            justify-content: space-between;
+            gap: 10px;
+            align-items: flex-start;
+            margin-bottom: 10px;
+        }
+
+        .kmap-meta {
+            display: grid;
+            gap: 6px;
+            color: var(--text-soft);
+            font-size: 12px;
+        }
+
+        .kmap-meta strong {
+            color: var(--heading);
+        }
+
+        .view-toggle {
+            display: inline-flex;
+            padding: 4px;
+            border-radius: 999px;
+            background: var(--surface-muted);
+            border: 1px solid var(--border);
+        }
+
+        .view-toggle button {
+            padding: 6px 10px;
+            border-radius: var(--radius-md);
+            background: transparent;
+            color: var(--text-soft);
+            font-size: 11px;
+            cursor: pointer;
+        }
+
+        .view-toggle button.active {
+            background: white;
+            color: var(--heading);
+            box-shadow: 0 8px 18px rgba(13, 47, 40, 0.10);
+        }
+
+        .kmap-surface {
+            border-radius: 18px;
+            background: var(--surface-muted);
+            border: 1px solid var(--border);
+            padding: 10px;
+            min-height: 170px;
+        }
+
+        .kmap-grid-wrap {
+            overflow-x: auto;
+            padding-bottom: 4px;
+        }
+
+        .kmap-grid {
+            border-collapse: separate;
+            border-spacing: 6px;
+            min-width: 100%;
+        }
+
+        .kmap-grid th {
+            font-family: var(--mono);
+            font-size: 10px;
+            color: var(--text-soft);
+            font-weight: 700;
+            text-align: center;
+            padding: 2px;
+        }
+
+        .kmap-grid td {
+            position: relative;
+            min-width: 40px;
+            height: 40px;
+            border-radius: 12px;
+            background: white;
+            border: 1px solid rgba(18, 42, 37, 0.10);
+            text-align: center;
+            font-family: var(--mono);
+            font-weight: 800;
+            font-size: 14px;
+            color: var(--heading);
+            transition: opacity 0.18s ease, transform 0.18s ease, background 0.18s ease, border-color 0.18s ease;
+        }
+
+        .kmap-grid td.value-1 {
+            background: rgba(21, 115, 106, 0.05);
+        }
+
+        .kmap-grid td.value-0 {
+            background: rgba(255, 255, 255, 0.92);
+        }
+
+        .kmap-grid.dimmed td.kmap-cell:not(.highlighted) {
+            opacity: 0.34;
+        }
+
+        .kmap-grid td.kmap-cell.highlighted {
+            transform: translateY(-1px);
+            opacity: 1;
+        }
+
+        .kmap-grid td.kmap-cell.highlighted.sop {
+            background: rgba(21, 115, 106, 0.16);
+            border-color: rgba(21, 115, 106, 0.24);
+        }
+
+        .kmap-grid td.kmap-cell.highlighted.pos {
+            background: rgba(217, 109, 40, 0.16);
+            border-color: rgba(217, 109, 40, 0.24);
+        }
+
+        .kmap-text {
+            margin: 0;
+            white-space: pre-wrap;
+            word-break: break-word;
+            color: var(--heading);
+            font-family: var(--mono);
+            font-size: 11px;
+            line-height: 1.7;
+        }
+
+        .omitted-note {
+            display: grid;
+            gap: 10px;
+            padding: 14px;
+            border-radius: 16px;
+            background: white;
+            border: 1px dashed var(--border-strong);
+        }
+
+        .omitted-note strong {
+            color: var(--heading);
+        }
+
+        .omitted-note p {
+            margin: 0;
+            color: var(--text-soft);
+            font-size: 12px;
+            line-height: 1.55;
+        }
+
+        .hidden {
+            display: none !important;
+        }
+
+        @media (max-width: 980px) {
+            .hero,
+            .workspace {
+                grid-template-columns: 1fr;
+            }
+
+            .hero-side {
+                grid-template-columns: repeat(2, minmax(0, 1fr));
+            }
+        }
+
+        @media (max-width: 720px) {
+            .page {
+                width: min(100vw - 16px, 100%);
+                padding: 16px 0 24px;
+            }
+
+            .hero-card,
+            .panel,
+            .result-card,
+            .kmap-panel {
+                border-radius: 18px;
+                padding: 16px;
+            }
+
+            .hero-side,
+            .results-grid,
+            .quick-help,
+            .input-row {
+                grid-template-columns: 1fr;
+            }
+
+            #solve-btn {
+                min-height: 48px;
+            }
+
+            .kmap-head {
+                flex-direction: column;
+            }
         }
     </style>
 </head>
 <body>
-    <div class="container">
-        <h1>卡诺图 &amp; 逻辑化简器</h1>
-        <p class="subtitle">基于 C++ WebAssembly 引擎，支持最多 25 个变量的布尔表达式化简</p>
+    <div class="page">
+        <section class="hero">
+            <div class="hero-card">
+                <div class="eyebrow">Boolean Workspace</div>
+                <h1>卡诺图与逻辑化简工作台</h1>
+                <p class="hero-copy">
+                    用同一套 C++ WebAssembly 求解引擎，查看最简 SOP / POS、最小项与最大项，
+                    并在卡诺图上直接联动高亮每一项对应的分组。
+                </p>
+            </div>
+            <div class="hero-side">
+                <div class="hero-card hero-stat">
+                    <div class="label">输入能力</div>
+                    <div class="value">25 变量</div>
+                    <p>支持括号、相邻与、显式与、显式或，以及大小写变量表示原变量与反变量。</p>
+                </div>
+                <div class="hero-card hero-stat">
+                    <div class="label">交互重点</div>
+                    <div class="value">项级联动</div>
+                    <p>鼠标或键盘聚焦 SOP / POS 某一项时，卡诺图会同步高亮该项覆盖的圈和单元格。</p>
+                </div>
+            </div>
+        </section>
 
-        <div class="card">
-            <div class="input-row">
-                <input id="expr-input" type="text" placeholder="例如：F(a,b,c)=ab+Ac+bc"
-                    autocomplete="off" spellcheck="false" disabled>
-                <button id="solve-btn" disabled>化简</button>
+        <section class="workspace">
+            <div class="panel">
+                <h2 class="panel-title">表达式输入</h2>
+                <p class="panel-subtitle">输入一条布尔表达式，页面会同步返回最简结果与结构化卡诺图。</p>
+
+                <div class="input-shell">
+                    <div class="input-row">
+                        <input id="expr-input" type="text" placeholder="例如：Z(a,b,c,d,e)=(d+e)(a+b+c)(B+C+D+E)(a+B+c+D+e)"
+                            autocomplete="off" spellcheck="false" disabled>
+                        <button id="solve-btn" disabled>开始化简</button>
+                    </div>
+                    <div id="status-bar" data-tone="loading">正在加载 WASM 引擎…</div>
+                </div>
             </div>
-            <div class="hint">
-                格式：<code>F(a,b,c,...)=表达式</code> &nbsp;·&nbsp;
-                小写 = 原变量，大写 = 反变量 &nbsp;·&nbsp;
-                支持 <code>+</code>（或）、相邻 / <code>*</code> / <code>.</code>（与）、括号
-            </div>
-            <div id="status-bar">正在加载 WASM 引擎…</div>
-        </div>
+
+            <aside class="panel">
+                <h2 class="panel-title">快速说明</h2>
+                <p class="panel-subtitle">变量表顺序同时决定最小项编号和卡诺图的行列变量划分。</p>
+                <div class="quick-help">
+                    <div class="mini-card">
+                        <div class="mini-label">输入格式</div>
+                        <p>函数头固定为 <code>F(a,b,c,...)=...</code></p>
+                        <code>Z(a,b,c)=aB+bc+ac</code>
+                    </div>
+                    <div class="mini-card">
+                        <div class="mini-label">符号规则</div>
+                        <ul>
+                            <li>小写表示原变量</li>
+                            <li>大写表示反变量</li>
+                            <li><span class="inline-code">+</span><span class="rule-text">表示或</span></li>
+                            <li><span class="rule-text">相邻 /</span><span class="inline-code">*</span><span class="rule-text">/</span><span class="inline-code">.</span><span class="rule-text">表示与</span></li>
+                        </ul>
+                    </div>
+                </div>
+            </aside>
+        </section>
 
         <div id="error-card" class="error-card"></div>
 
-        <div id="result-section" class="result-section">
-            <div class="card">
-                <div id="original-input-line" class="original-input"></div>
-                <div class="result-grid">
-                    <div class="result-box">
-                        <div class="label">最简与或表达式 (SOP)</div>
-                        <div class="value" id="sop-value">—</div>
+        <section id="result-section" class="results">
+            <div class="kmap-panel">
+                <div class="kmap-head">
+                    <div class="kmap-meta">
+                        <div class="card-label" style="margin-bottom: 0;">卡诺图</div>
+                        <div id="kmap-summary"><strong>等待结果</strong></div>
+                        <div id="kmap-vars"></div>
                     </div>
-                    <div class="result-box">
-                        <div class="label">最简或与表达式 (POS)</div>
-                        <div class="value" id="pos-value">—</div>
-                    </div>
-                    <div class="result-box">
-                        <div class="label">最小项表达式</div>
-                        <div class="value" id="minterms-value">—</div>
-                    </div>
-                    <div class="result-box">
-                        <div class="label">最大项表达式</div>
-                        <div class="value" id="maxterms-value">—</div>
+                    <div class="view-toggle" role="tablist" aria-label="卡诺图视图切换">
+                        <button id="grid-view-btn" class="active" type="button">网格视图</button>
+                        <button id="text-view-btn" type="button">文本视图</button>
                     </div>
                 </div>
-                <div id="kmap-box">
-                    <div class="label">卡诺图</div>
-                    <pre id="kmap-text"></pre>
+
+                <div class="kmap-surface">
+                    <div id="kmap-grid-view"></div>
+                    <pre id="kmap-text-view" class="kmap-text hidden"></pre>
                 </div>
             </div>
-        </div>
+
+            <div class="panel">
+                <div id="original-input-line" class="original-input"></div>
+
+                <div class="results-grid">
+                    <article class="result-card">
+                        <div class="card-label">最简与或表达式 (SOP)</div>
+                        <div id="sop-value" class="plain-expression">—</div>
+                    </article>
+                    <article class="result-card">
+                        <div class="card-label">最简或与表达式 (POS)</div>
+                        <div id="pos-value" class="plain-expression">—</div>
+                    </article>
+                    <article class="result-card">
+                        <div class="card-label">最小项表达式</div>
+                        <div id="minterms-value" class="plain-expression">—</div>
+                    </article>
+                    <article class="result-card">
+                        <div class="card-label">最大项表达式</div>
+                        <div id="maxterms-value" class="plain-expression">—</div>
+                    </article>
+                </div>
+            </div>
+        </section>
     </div>
 
     <script>
+        function updateBootstrapStatus(text, tone) {
+            var status = document.getElementById('status-bar');
+            if (!status) {
+                return;
+            }
+            status.textContent = text;
+            status.dataset.tone = tone || 'loading';
+        }
+
         var Module = {
             onRuntimeInitialized: function () {
+                updateBootstrapStatus('WASM 引擎已就绪', 'ready');
                 document.getElementById('expr-input').disabled = false;
                 document.getElementById('solve-btn').disabled = false;
-                document.getElementById('status-bar').textContent = 'WASM 引擎已就绪';
+            },
+            onAbort: function (message) {
+                updateBootstrapStatus('WASM 加载失败：' + message, 'error');
             }
         };
     </script>
     <script src="kmap.js"></script>
     <script>
-        function solve() {
-            var input = document.getElementById('expr-input').value.trim();
-            if (!input) return;
+        var appState = {
+            currentResult: null,
+            activeTerm: null,
+            view: 'grid'
+        };
 
-            var errorCard = document.getElementById('error-card');
-            var resultSection = document.getElementById('result-section');
+        var refs = {
+            exprInput: document.getElementById('expr-input'),
+            solveBtn: document.getElementById('solve-btn'),
+            statusBar: document.getElementById('status-bar'),
+            errorCard: document.getElementById('error-card'),
+            resultSection: document.getElementById('result-section'),
+            originalInput: document.getElementById('original-input-line'),
+            sopValue: document.getElementById('sop-value'),
+            posValue: document.getElementById('pos-value'),
+            mintermsValue: document.getElementById('minterms-value'),
+            maxtermsValue: document.getElementById('maxterms-value'),
+            kmapSummary: document.getElementById('kmap-summary'),
+            kmapVars: document.getElementById('kmap-vars'),
+            kmapGridView: document.getElementById('kmap-grid-view'),
+            kmapTextView: document.getElementById('kmap-text-view'),
+            gridViewBtn: document.getElementById('grid-view-btn'),
+            textViewBtn: document.getElementById('text-view-btn')
+        };
 
-            errorCard.classList.remove('visible');
-            resultSection.classList.remove('visible');
+        function setStatus(text, tone) {
+            refs.statusBar.textContent = text;
+            refs.statusBar.dataset.tone = tone || 'loading';
+        }
 
-            var result = Module.processExpressionWeb(input);
+        function vectorToArray(vec) {
+            if (!vec) return [];
+            if (Array.isArray(vec)) return vec.slice();
+            if (typeof vec.size === 'function' && typeof vec.get === 'function') {
+                var items = [];
+                for (var i = 0; i < vec.size(); i += 1) {
+                    items.push(vec.get(i));
+                }
+                return items;
+            }
+            return [];
+        }
 
-            if (result.error && result.error.length > 0) {
-                errorCard.textContent = '解析失败：' + result.error;
-                errorCard.classList.add('visible');
+        function normalizeCell(cell) {
+            return {
+                row: Number(cell.row),
+                col: Number(cell.col)
+            };
+        }
+
+        function normalizeTerm(term) {
+            return {
+                text: String(term.text || ''),
+                value: Number(term.value || 0),
+                cells: vectorToArray(term.cells).map(normalizeCell)
+            };
+        }
+
+        function normalizeResult(raw) {
+            return {
+                error: String(raw.error || ''),
+                originalInput: String(raw.originalInput || ''),
+                kmapText: String(raw.kmapText || ''),
+                kmapOmitted: Boolean(raw.kmapOmitted),
+                kmapSummary: String(raw.kmapSummary || ''),
+                kmapRowVars: String(raw.kmapRowVars || ''),
+                kmapColVars: String(raw.kmapColVars || ''),
+                kmapRowCount: Number(raw.kmapRowCount || 0),
+                kmapColCount: Number(raw.kmapColCount || 0),
+                kmapRowLabels: vectorToArray(raw.kmapRowLabels).map(String),
+                kmapColLabels: vectorToArray(raw.kmapColLabels).map(String),
+                kmapCells: vectorToArray(raw.kmapCells).map(function (value) { return Number(value); }),
+                sop: String(raw.sop || ''),
+                pos: String(raw.pos || ''),
+                minterms: String(raw.minterms || ''),
+                maxterms: String(raw.maxterms || ''),
+                sopTerms: vectorToArray(raw.sopTerms).map(normalizeTerm),
+                posTerms: vectorToArray(raw.posTerms).map(normalizeTerm)
+            };
+        }
+
+        function clearError() {
+            refs.errorCard.classList.remove('visible');
+            refs.errorCard.textContent = '';
+        }
+
+        function showError(message) {
+            refs.errorCard.textContent = message;
+            refs.errorCard.classList.add('visible');
+        }
+
+        function setView(view) {
+            appState.view = view;
+            refs.gridViewBtn.classList.toggle('active', view === 'grid');
+            refs.textViewBtn.classList.toggle('active', view === 'text');
+            refs.kmapGridView.classList.toggle('hidden', view !== 'grid');
+            refs.kmapTextView.classList.toggle('hidden', view !== 'text');
+        }
+
+        function buildTermNode(term, index, kind) {
+            var chip = document.createElement('button');
+            chip.type = 'button';
+            chip.className = 'term-chip ' + kind;
+            chip.textContent = term.text;
+            chip.dataset.kind = kind;
+            chip.dataset.index = String(index);
+            chip.addEventListener('mouseenter', function () {
+                activateTerm(kind, index);
+            });
+            chip.addEventListener('mouseleave', function () {
+                deactivateTerm(kind, index);
+            });
+            chip.addEventListener('focus', function () {
+                activateTerm(kind, index);
+            });
+            chip.addEventListener('blur', function () {
+                deactivateTerm(kind, index);
+            });
+            return chip;
+        }
+
+        function renderTermList(container, terms, fallbackText, kind) {
+            container.innerHTML = '';
+            if (!terms.length) {
+                container.textContent = fallbackText || '—';
                 return;
             }
 
-            document.getElementById('original-input-line').textContent =
-                '输入表达式：' + result.originalInput;
-            document.getElementById('sop-value').textContent = result.sop || '—';
-            document.getElementById('pos-value').textContent = result.pos || '—';
-            document.getElementById('minterms-value').textContent = result.minterms || '—';
-            document.getElementById('maxterms-value').textContent = result.maxterms || '—';
-            document.getElementById('kmap-text').textContent = result.kmapText;
+            var line = document.createElement('div');
+            line.className = 'term-line';
 
-            resultSection.classList.add('visible');
+            terms.forEach(function (term, index) {
+                if (kind === 'sop' && index > 0) {
+                    var separator = document.createElement('span');
+                    separator.className = 'term-separator';
+                    separator.textContent = '+';
+                    line.appendChild(separator);
+                }
+                line.appendChild(buildTermNode(term, index, kind));
+            });
+
+            container.appendChild(line);
         }
 
-        document.getElementById('solve-btn').addEventListener('click', solve);
-        document.getElementById('expr-input').addEventListener('keydown', function (e) {
-            if (e.key === 'Enter') solve();
+        function renderExpressions(result) {
+            renderTermList(refs.sopValue, result.sopTerms, result.sop, 'sop');
+            renderTermList(refs.posValue, result.posTerms, result.pos, 'pos');
+            refs.mintermsValue.textContent = result.minterms || '—';
+            refs.maxtermsValue.textContent = result.maxterms || '—';
+        }
+
+        function renderKMap(result) {
+            refs.kmapSummary.innerHTML = '<strong>' + result.kmapSummary + '</strong>';
+            refs.kmapVars.textContent = '行变量：' + result.kmapRowVars + ' / 列变量：' + result.kmapColVars;
+            refs.kmapTextView.textContent = result.kmapText || '';
+            refs.kmapGridView.innerHTML = '';
+
+            if (result.kmapOmitted) {
+                var omitted = document.createElement('div');
+                omitted.className = 'omitted-note';
+                omitted.innerHTML =
+                    '<strong>卡诺图已省略</strong>' +
+                    '<p>当前尺寸为 ' + result.kmapRowCount + ' x ' + result.kmapColCount +
+                    '。页面保留表达式结果，但不提供 hover 分组高亮。</p>';
+                refs.kmapGridView.appendChild(omitted);
+                return;
+            }
+
+            var wrapper = document.createElement('div');
+            wrapper.className = 'kmap-grid-wrap';
+
+            var table = document.createElement('table');
+            table.className = 'kmap-grid';
+
+            var thead = document.createElement('thead');
+            var headRow = document.createElement('tr');
+            var corner = document.createElement('th');
+            corner.textContent = '';
+            headRow.appendChild(corner);
+
+            result.kmapColLabels.forEach(function (label) {
+                var th = document.createElement('th');
+                th.textContent = label;
+                headRow.appendChild(th);
+            });
+
+            thead.appendChild(headRow);
+            table.appendChild(thead);
+
+            var tbody = document.createElement('tbody');
+            for (var row = 0; row < result.kmapRowCount; row += 1) {
+                var tr = document.createElement('tr');
+                var rowLabel = document.createElement('th');
+                rowLabel.textContent = result.kmapRowLabels[row] || '';
+                tr.appendChild(rowLabel);
+
+                for (var col = 0; col < result.kmapColCount; col += 1) {
+                    var td = document.createElement('td');
+                    var value = result.kmapCells[row * result.kmapColCount + col];
+                    td.className = 'kmap-cell value-' + value;
+                    td.dataset.row = String(row);
+                    td.dataset.col = String(col);
+                    td.textContent = String(value);
+                    tr.appendChild(td);
+                }
+
+                tbody.appendChild(tr);
+            }
+
+            table.appendChild(tbody);
+            wrapper.appendChild(table);
+            refs.kmapGridView.appendChild(wrapper);
+        }
+
+        function clearHighlight() {
+            var grid = refs.kmapGridView.querySelector('.kmap-grid');
+            var cells = refs.kmapGridView.querySelectorAll('.kmap-cell');
+
+            if (grid) {
+                grid.classList.remove('dimmed');
+            }
+
+            cells.forEach(function (cell) {
+                cell.classList.remove('highlighted', 'sop', 'pos');
+            });
+
+            document.querySelectorAll('.term-chip').forEach(function (chip) {
+                chip.classList.remove('active');
+            });
+        }
+
+        function getActiveTerms(kind) {
+            if (!appState.currentResult) return [];
+            return kind === 'sop' ? appState.currentResult.sopTerms : appState.currentResult.posTerms;
+        }
+
+        function activateTerm(kind, index) {
+            appState.activeTerm = { kind: kind, index: index };
+            applyHighlight();
+        }
+
+        function deactivateTerm(kind, index) {
+            if (!appState.activeTerm) return;
+            if (appState.activeTerm.kind === kind && appState.activeTerm.index === index) {
+                appState.activeTerm = null;
+                applyHighlight();
+            }
+        }
+
+        function applyHighlight() {
+            clearHighlight();
+
+            if (!appState.currentResult || appState.currentResult.kmapOmitted || !appState.activeTerm) {
+                return;
+            }
+
+            var kind = appState.activeTerm.kind;
+            var terms = getActiveTerms(kind);
+            var term = terms[appState.activeTerm.index];
+            if (!term || !term.cells.length) {
+                return;
+            }
+
+            var grid = refs.kmapGridView.querySelector('.kmap-grid');
+            if (!grid) {
+                return;
+            }
+
+            grid.classList.add('dimmed');
+
+            term.cells.forEach(function (cell) {
+                var selector = '.kmap-cell[data-row="' + cell.row + '"][data-col="' + cell.col + '"]';
+                var cellNode = refs.kmapGridView.querySelector(selector);
+                if (!cellNode) {
+                    return;
+                }
+
+                cellNode.classList.add('highlighted', kind);
+            });
+
+            var activeChip = document.querySelector('.term-chip[data-kind="' + kind + '"][data-index="' + appState.activeTerm.index + '"]');
+            if (activeChip) {
+                activeChip.classList.add('active');
+            }
+        }
+
+        function renderResult(result) {
+            appState.currentResult = result;
+            appState.activeTerm = null;
+
+            refs.originalInput.innerHTML = '<strong>输入表达式</strong><span></span>';
+            refs.originalInput.querySelector('span').textContent = result.originalInput;
+            renderExpressions(result);
+            renderKMap(result);
+            setView(appState.view);
+            applyHighlight();
+            refs.resultSection.classList.add('visible');
+        }
+
+        function runSolve() {
+            var input = refs.exprInput.value.trim();
+            if (!input) {
+                return;
+            }
+
+            clearError();
+            setStatus('正在计算表达式与卡诺图…', 'busy');
+            refs.solveBtn.disabled = true;
+            refs.solveBtn.textContent = '计算中…';
+
+            window.requestAnimationFrame(function () {
+                try {
+                    var raw = Module.processExpressionWeb(input);
+                    var result = normalizeResult(raw);
+                    if (typeof raw.delete === 'function') {
+                        raw.delete();
+                    }
+
+                    if (result.error) {
+                        refs.resultSection.classList.remove('visible');
+                        showError('解析失败：' + result.error);
+                        setStatus('输入存在错误，请修正后重试', 'error');
+                        return;
+                    }
+
+                    renderResult(result);
+                    setStatus('结果已更新，可将鼠标移到 SOP / POS 项上查看圈选', 'ready');
+                } catch (error) {
+                    refs.resultSection.classList.remove('visible');
+                    showError('运行失败：' + (error && error.message ? error.message : String(error)));
+                    setStatus('求解失败，请检查 WASM 是否正常加载', 'error');
+                } finally {
+                    refs.solveBtn.disabled = false;
+                    refs.solveBtn.textContent = '开始化简';
+                }
+            });
+        }
+
+        refs.solveBtn.addEventListener('click', runSolve);
+        refs.exprInput.addEventListener('keydown', function (event) {
+            if (event.key === 'Enter') {
+                runSolve();
+            }
+        });
+        refs.gridViewBtn.addEventListener('click', function () {
+            setView('grid');
+        });
+        refs.textViewBtn.addEventListener('click', function () {
+            setView('text');
+        });
+
+        window.addEventListener('error', function (event) {
+            if (String(event.filename || '').indexOf('kmap') !== -1) {
+                setStatus('脚本加载失败，请确认 kmap.js / kmap.wasm 可访问', 'error');
+            }
         });
     </script>
 </body>
