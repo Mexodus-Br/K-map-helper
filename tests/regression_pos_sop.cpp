@@ -109,7 +109,7 @@ int main() {
     const std::vector<std::string> cases = {
         "F(a,b,c,d)=(A+B)(B+c)(a+c+d)",
         "F(a,b,c,d)=(b+a)(c)",
-        "F(a,b,c,d)=(A+b+c)(a+C)(B+d)",
+        "F(a,b,c,d)=(a+b+c)(a+c)(b+d)",
     };
 
     for (const std::string& testCase : cases) {
