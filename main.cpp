@@ -254,7 +254,7 @@ struct BDDManager {
         if (it != notMemo.end()) {
             return it->second;
         }
-        const Node& node = nodes[root];
+        const Node node = nodes[root];
         int value = makeNode(node.var, negate(node.low), negate(node.high));
         notMemo.emplace(root, value);
         return value;
