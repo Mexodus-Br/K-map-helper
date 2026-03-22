@@ -864,6 +864,28 @@
             };
         }
 
+        function getMissingWebApiFields(raw) {
+            var requiredFields = [
+                'kmapOmitted',
+                'kmapSummary',
+                'kmapRowVars',
+                'kmapColVars',
+                'kmapRowCount',
+                'kmapColCount',
+                'kmapRowLabels',
+                'kmapColLabels',
+                'kmapCells',
+                'minterms',
+                'maxterms',
+                'sopTerms',
+                'posTerms'
+            ];
+
+            return requiredFields.filter(function (field) {
+                return typeof raw[field] === 'undefined';
+            });
+        }
+
         function clearError() {
             refs.errorCard.classList.remove('visible');
             refs.errorCard.textContent = '';
@@ -1096,6 +1118,21 @@
             window.requestAnimationFrame(function () {
                 try {
                     var raw = Module.processExpressionWeb(input);
+                    var missingFields = getMissingWebApiFields(raw);
+                    if (missingFields.length) {
+                        if (typeof raw.delete === 'function') {
+                            raw.delete();
+                        }
+                        refs.resultSection.classList.remove('visible');
+                        showError(
+                            '当前网页加载的 WebAssembly 产物版本过旧，缺少字段：' +
+                            missingFields.join(', ') +
+                            '。请重新运行 build_wasm.sh 生成最新的 web/kmap.js 和 web/kmap.wasm。'
+                        );
+                        setStatus('WASM 版本与页面不匹配，请先重建 Web bundle', 'error');
+                        return;
+                    }
+
                     var result = normalizeResult(raw);
                     if (typeof raw.delete === 'function') {
                         raw.delete();
