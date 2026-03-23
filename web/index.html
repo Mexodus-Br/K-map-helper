@@ -666,7 +666,7 @@
                 <div class="hero-card hero-stat">
                     <div class="label">输入能力</div>
                     <div class="value">25 变量</div>
-                    <p>支持括号、相邻与、显式与、显式或，以及大小写变量表示原变量与反变量。</p>
+                    <p>支持括号、相邻与、显式与、显式或，以及 ! / ~ 前缀非和大小写反变量写法。</p>
                 </div>
                 <div class="hero-card hero-stat">
                     <div class="label">交互重点</div>
@@ -683,7 +683,7 @@
 
                 <div class="input-shell">
                     <div class="input-row">
-                        <input id="expr-input" type="text" placeholder="例如：Z(a,b,c,d,e)=(d+e)(a+b+c)(B+C+D+E)(a+B+c+D+e)"
+                        <input id="expr-input" type="text" placeholder="例如：Z(a,b,c,d,e)=!(d+e)(a+b+c)(B+C+D+E)(a+B+c+D+e)"
                             autocomplete="off" spellcheck="false" disabled>
                         <button id="solve-btn" disabled>开始化简</button>
                     </div>
@@ -698,13 +698,15 @@
                     <div class="mini-card">
                         <div class="mini-label">输入格式</div>
                         <p>函数头固定为 <code>F(a,b,c,...)=...</code></p>
-                        <code>Z(a,b,c)=aB+bc+ac</code>
+                        <code>Z(a,b,c)=a!b+bc+ac</code>
                     </div>
                     <div class="mini-card">
                         <div class="mini-label">符号规则</div>
                         <ul>
                             <li>小写表示原变量</li>
                             <li>大写表示反变量</li>
+                            <li><span class="inline-code">!</span><span class="rule-text">主推前缀非</span></li>
+                            <li><span class="inline-code">~</span><span class="rule-text">与 ! 等价</span></li>
                             <li><span class="inline-code">+</span><span class="rule-text">表示或</span></li>
                             <li><span class="rule-text">相邻 /</span><span class="inline-code">*</span><span class="rule-text">/</span><span class="inline-code">.</span><span class="rule-text">表示与</span></li>
                         </ul>

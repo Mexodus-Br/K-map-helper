@@ -520,19 +520,33 @@ private:
     }
 
     int parseAnd() {
-        int root = parsePrimary();
+        int root = parseUnary();
         while (error.empty()) {
             if (match('*') || match('.')) {
-                int rhs = parsePrimary();
+                int rhs = parseUnary();
                 root = manager.apply('&', root, rhs);
                 continue;
             }
             if (startsPrimary(current())) {
-                int rhs = parsePrimary();
+                int rhs = parseUnary();
                 root = manager.apply('&', root, rhs);
                 continue;
             }
             break;
+        }
+        return root;
+    }
+
+    int parseUnary() {
+        int negateCount = 0;
+        while (current() == '!' || current() == '~') {
+            ++pos;
+            ++negateCount;
+        }
+
+        int root = parsePrimary();
+        if (error.empty() && (negateCount & 1) != 0) {
+            root = manager.negate(root);
         }
         return root;
     }
@@ -590,7 +604,7 @@ private:
     }
 
     static bool startsPrimary(char ch) {
-        return ch == '(' || ch == '0' || ch == '1' ||
+        return ch == '!' || ch == '~' || ch == '(' || ch == '0' || ch == '1' ||
                (ch >= 'a' && ch <= 'y') || (ch >= 'A' && ch <= 'Y');
     }
 };
@@ -1059,9 +1073,10 @@ void printInteractiveHint() {
     cout << u8"输入格式提示:\n";
     cout << u8"1. 必须以 F(a,b,c,...)= 开头，例如 Z(a,b,c)=aB+cdE\n";
     cout << u8"2. 小写字母表示原变量，大写字母表示反变量，例如 aB 表示 a&~b\n";
-    cout << u8"3. 支持 + 表示或，* 或 . 表示与，相邻项默认也表示与\n";
-    cout << u8"4. 支持括号，例如 Z(a,b,c,d,e)=(d+e)(a+b+c)(B+C+D+E)(a+B+c+D+e)\n";
-    cout << u8"5. 输入空行或 exit/quit/q 结束\n";
+    cout << u8"3. 支持 ! 或 ~ 表示前缀非，推荐使用 !，例如 !a、!(a+b)，且 !a 与 ~a 等价\n";
+    cout << u8"4. 支持 + 表示或，* 或 . 表示与，相邻项默认也表示与，例如 a!b 表示 a&~b\n";
+    cout << u8"5. 支持括号，例如 Z(a,b,c,d,e)=!(d+e)(a+b+c)(B+C+D+E)(a+B+c+D+e)\n";
+    cout << u8"6. 输入空行或 exit/quit/q 结束\n";
 }
 
 bool isExitCommand(const string& normalized) {
